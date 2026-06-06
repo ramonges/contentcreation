@@ -62,6 +62,13 @@ export async function* streamChatWithLlama(messages: Message[]): AsyncGenerator<
   }
 }
 
+export {
+  buildSeasonOutlineMessages,
+  buildEpisodeScriptMessages,
+  GNOMI_SERIES_FORMAT,
+} from './gnomiFormat';
+
+/** @deprecated Use buildEpisodeScriptMessages from gnomiFormat instead */
 export function buildEpisodeGenerationPrompt(
   companyContext: string,
   castMembers: Array<{ name: string; jobPosition: string; jobDescription?: string }>,
@@ -78,10 +85,8 @@ export function buildEpisodeGenerationPrompt(
   return [
     {
       role: 'system',
-      content: `You are a creative TV show writer specializing in comedic workplace dramas that subtly showcase product usage. 
-Your episodes should feel like real moments from The Office or Succession — raw, funny, dramatic, with real human interactions.
-The product is used naturally in conversations and actions, NEVER explained like a tutorial.
-Write each episode as a proper short-form script with scene descriptions and dialogue.`,
+      content: `You are a short-form drama writer for Gnomi's social series (Cluely-style format).
+Write linked episodes where each is unique but the season arc continues.`,
     },
     {
       role: 'user',
@@ -94,12 +99,11 @@ Total season: ${episodeCount} episodes
 Write episode ${episodeIndex + 1} of ${episodeCount}.
 
 Format:
-TITLE: [A dramatic, funny title referencing the episode's conflict]
+TITLE: [Dramatic title]
 LOGLINE: [One punchy sentence]
-SCENE 1: [Scene heading]
-[Description and dialogue]
-SCENE 2: ...
-[Continue for 3-5 scenes, 2-4 min read time]`,
+PART 1 — SCENE: [15-25s workplace drama]
+PART 2 — FACE-CAM CONFESSION: [5-10s raw quotable line to camera]
+PART 3 — CLIFFHANGER: [3s unresolved cut — do not resolve tension]`,
     },
   ];
 }

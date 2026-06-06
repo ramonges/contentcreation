@@ -18,6 +18,13 @@ const DEFAULT_CAST: CastMember[] = [
   { id: '2', name: '', jobPosition: '', jobDescription: '' },
 ];
 
+const EPISODE_MIN = 1;
+const EPISODE_MAX = 12;
+
+function episodeTickPosition(value: number) {
+  return ((value - EPISODE_MIN) / (EPISODE_MAX - EPISODE_MIN)) * 100;
+}
+
 interface Step1Props {
   initialData?: Step1Data;
   onComplete: (data: Step1Data) => void;
@@ -83,20 +90,31 @@ export default function Step1({ initialData, onComplete }: Step1Props) {
           Episodes per season
         </label>
         <div className="flex items-center gap-4">
-          <div className="flex-1 relative">
+          <div className="flex-1 relative pt-1">
             <input
               type="range"
-              min={1}
-              max={12}
+              min={EPISODE_MIN}
+              max={EPISODE_MAX}
               value={episodeCount}
               onChange={(e) => setEpisodeCount(parseInt(e.target.value))}
-              className="w-full h-2 bg-gray-200 rounded-full appearance-none cursor-pointer accent-amber-500"
+              className="episode-slider w-full h-2 bg-gray-200 rounded-full appearance-none cursor-pointer accent-amber-500"
             />
-            <div className="flex justify-between mt-2 text-xs text-gray-400">
-              <span>1</span>
-              <span>4</span>
-              <span>8</span>
-              <span>12</span>
+            <div className="relative mt-3 h-5">
+              {Array.from({ length: EPISODE_MAX }, (_, i) => i + EPISODE_MIN).map((value) => (
+                <button
+                  key={value}
+                  type="button"
+                  onClick={() => setEpisodeCount(value)}
+                  className={`absolute -translate-x-1/2 text-xs transition-colors ${
+                    value === episodeCount
+                      ? 'text-amber-600 font-bold'
+                      : 'text-gray-400 hover:text-gray-600'
+                  }`}
+                  style={{ left: `${episodeTickPosition(value)}%` }}
+                >
+                  {value}
+                </button>
+              ))}
             </div>
           </div>
           <div className="w-16 h-16 rounded-2xl bg-amber-500 flex flex-col items-center justify-center shadow-md shadow-amber-200">

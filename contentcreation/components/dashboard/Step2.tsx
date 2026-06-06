@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Message } from '@/lib/llm';
 import { chatClient } from '@/lib/llmClient';
 import { formatCastForPrompt } from '@/lib/cast';
+import { SCRIPT_DURATION_SECONDS } from '@/lib/episodeGeneration';
 import type { Step1Data } from './Step1';
 
 interface Step2Props {
@@ -58,12 +59,14 @@ export default function Step2({
       {
         role: 'system',
         content: `You are an enthusiastic TV show writer/director conducting a creative brief interview. 
-Your goal is to understand the company deeply to write compelling episodes.
+Your goal is to understand the company deeply so we can write a LINKED season — one continuous story across ${step1Data.episodeCount} episodes.
+Early episodes should show struggles (e.g. bad sales, chaos). Middle episodes: funny interactions and tension. Final episode(s): payoff (e.g. they close the deal).
 Keep responses SHORT (2-3 sentences max). Ask ONE follow-up question at a time.
-Be conversational, a little funny. After ${Math.min(userMessageCount + 2, 5)} exchanges, suggest they're ready to generate episodes.
+Be conversational, a little funny. Ask about: the main struggle, funny moments at the company, what a "win" looks like, and character dynamics.
+After ${Math.min(userMessageCount + 2, 5)} exchanges, suggest they're ready to generate episodes.
 Cast (name, job position, day-to-day):
 ${formatCastForPrompt(step1Data.cast)}
-Episodes planned: ${step1Data.episodeCount}
+Episodes planned: ${step1Data.episodeCount} — each episode = different scenario, same through-line.
 Use each person's job position and responsibilities when asking questions and shaping story ideas.`,
       },
       ...withUser,
@@ -90,10 +93,21 @@ Use each person's job position and responsibilities when asking questions and sh
 
   const handleGenerate = (e: React.MouseEvent) => {
     e.preventDefault();
-    const context = messages
+
+    const briefing = messages
       .filter((m) => m.role !== 'system')
       .map((m) => `${m.role === 'user' ? 'Company' : 'AI'}: ${m.content}`)
       .join('\n\n');
+    const context = `SEASON SETUP:
+- Episodes: ${step1Data.episodeCount} (${step1Data.episodeCount} independent API calls — one script per episode)
+- Each script: ${SCRIPT_DURATION_SECONDS} seconds when performed
+- Episode 1 uses this briefing only. Episode 2+ also receives all prior episode scripts.
+- Linked story: early episodes struggles → middle funny/tension → finale payoff (e.g. close the sale)
+- Time: ep 1 morning, ep 2 lunch, ep 3 afternoon, etc.
+
+CREATIVE BRIEFING (complete Step 2 conversation):
+${briefing}`;
+
     onComplete(context, messages);
   };
 

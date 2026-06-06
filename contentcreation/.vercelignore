@@ -1,0 +1,3 @@
+# Leftover Next.js scaffold — app is Vite + React Router, not Next.js
+app/
+next.config.ts

@@ -2,15 +2,34 @@ import { useState, useEffect, useRef } from 'react';
 import { motion } from 'framer-motion';
 import EpisodeCard, { Episode } from './EpisodeCard';
 import { chatClient } from '@/lib/llmClient';
-import { formatCastForPrompt } from '@/lib/cast';
+import {
+  buildEpisodeScriptMessages,
+  buildFallbackScript,
+  buildSeasonContextMessages,
+  buildDefaultSeasonContext,
+  parseSeasonContext,
+  parseTitleAndLogline,
+  SCRIPT_DURATION_SECONDS,
+  type PriorEpisodeScript,
+  type SeasonContext,
+} from '@/lib/episodeGeneration';
 import type { Step1Data } from './Step1';
-import type { Message } from '@/lib/llm';
 
 interface Step3Props {
   step1Data: Step1Data;
   companyContext: string;
   episodes: Episode[];
-  onEpisodesChange: (episodes: Episode[]) => void;
+  seasonOutline: string;
+  seasonPlan: string;
+  generatedForEpisodeCount: number | null;
+  generationBatchId: string | null;
+  generatedForBatchId: string | null;
+  onEpisodesChange: (
+    episodes: Episode[],
+    seasonPlan?: string,
+    generatedForEpisodeCount?: number,
+    generatedForBatchId?: string | null
+  ) => void;
   onViewEpisode: (id: number | null) => void;
   onBack: () => void;
 }
@@ -21,160 +40,69 @@ const THUMB_CLASSES = [
   'ep-thumb-9', 'ep-thumb-10', 'ep-thumb-11', 'ep-thumb-12',
 ];
 
-const FALLBACK_TITLES = [
-  'Dan, the CEO Stole My Snacks',
-  "The Demo That Wasn't",
-  'CEO Gone Rogue',
-  'Slack at 2AM',
-  'The Password No One Knows',
-  'Who Approved This Budget?',
-  'Fire Drill or Real Fire?',
-  'The Client Meeting From Hell',
-  'Sprint Planning Gone Wrong',
-  'The Intern Saved Us All',
-  'Board Meeting Bloodbath',
-  'Last Day Before Launch',
-];
+type GenerationPhase = 'idle' | 'phase1' | 'phase2';
 
-const FALLBACK_LOGLINES = [
-  'A missing snack bag turns into a full HR investigation.',
-  'The product demo crashes live on stage. Someone has to improvise.',
-  'The CEO goes off-script on a podcast and breaks the internet.',
-  'An emergency Slack message at 2AM turns into a three-hour drama.',
-  'The whole team is locked out and the client is waiting.',
-  'An intern approves a $50K spend by accident.',
-  "Nobody knows if it's a drill until the fire truck shows up.",
-  'A dream client turns into a 4-hour nightmare meeting.',
-  'Sprint planning devolves into an existential crisis.',
-  'The intern finds the bug no senior dev could for three weeks.',
-  'The board wants answers. Nobody has them.',
-  'Everything that can go wrong does — 24 hours before launch.',
-];
-
-function generateFallbackScript(episodeIndex: number, cast: Step1Data['cast'], title: string): string {
-  const ep = episodeIndex + 1;
-  const castStr = cast.map((m) => m.name).join(', ');
-  const lead = cast[0] || { name: 'Alex', jobPosition: 'CEO', jobDescription: '' };
-  const co = cast[1] || { name: 'Sam', jobPosition: 'Designer', jobDescription: '' };
-
-  return `TITLE: ${title}
-LOGLINE: ${FALLBACK_LOGLINES[episodeIndex % FALLBACK_LOGLINES.length]}
-
-SCENE ${ep}: INT. OFFICE - MORNING
-
-[The office is buzzing. ${castStr} are all at their desks. There's an unusual energy today.]
-
-${lead.name.toUpperCase()}: (pulling up dashboard on screen) 
-  Anyone else seeing this? The dashboard is showing yesterday's data.
-
-${co.name.toUpperCase()}:
-  That's not yesterday's data. That's last week's.
-
-${lead.name.toUpperCase()}:
-  (stares at screen for a long moment)
-  ...okay. Okay. Nobody panic.
-
-[Beat. Everyone visibly panics.]
-
-SCENE ${ep + 1}: INT. MEETING ROOM - 10 MINUTES LATER
-
-[The entire team has abandoned their desks and crammed into the meeting room.]
-
-${lead.name.toUpperCase()}: 
-  Right. We have a client presentation in 45 minutes. What do we actually know?
-
-${co.name.toUpperCase()}:
-  I know that my coffee is cold and I'm about to spiral.
-
-[Someone's phone buzzes. It's the client. Early.]
-
-${lead.name.toUpperCase()}: 
-  (reading message)
-  They're... in the lobby. They're early.
-
-[Silence. A pen drops.]
-
-SCENE ${ep + 2}: INT. LOBBY - IMMEDIATELY
-
-[${lead.name} speed-walks to reception, refreshing the app furiously.]
-
-${lead.name.toUpperCase()}: (muttering)
-  Come on. Come on. Give me something to work with.
-
-[The app loads. The data is there. Fresh, real-time, perfect.]
-
-${lead.name.toUpperCase()}: (to themselves)
-  There you are. Never doubted you for a second.
-
-[The client walks through the door, smiling.]
-
-CLIENT:
-  Hope we're not too early!
-
-${lead.name.toUpperCase()}: (professional calm restored)
-  Perfect timing. We were just reviewing the latest numbers.
-
-[Cut to: ${co.name} in the meeting room, refreshing their own screen, jaw dropping at the data.]
-
-${co.name.toUpperCase()}: (texting)
-  it's back?? how?? what did you DO
-
-${lead.name.toUpperCase()}: (texting back)
-  ...I just opened the app.
-
-END OF EPISODE ${ep}`;
+/** PHASE 1 — Define full season context (arc + ending) before any script. */
+async function runPhase1(
+  step1Data: Step1Data,
+  briefingContext: string,
+  savedPlan: string
+): Promise<SeasonContext> {
+  let raw = savedPlan.trim();
+  if (!raw) {
+    try {
+      raw = await chatClient(buildSeasonContextMessages(step1Data, briefingContext));
+    } catch {
+      raw = buildDefaultSeasonContext(step1Data, briefingContext).raw;
+    }
+  }
+  return parseSeasonContext(raw, step1Data.episodeCount, briefingContext);
 }
 
-async function generateSingleEpisode(
-  index: number,
+/** PHASE 2 — One API call per episode with season context + all prior scripts. */
+async function runPhase2Episode(
+  episodeNumber: number,
   step1Data: Step1Data,
-  companyContext: string
+  briefingContext: string,
+  seasonContext: SeasonContext,
+  previousScripts: PriorEpisodeScript[]
 ): Promise<Episode> {
-  const i = index;
-  const title = FALLBACK_TITLES[i % FALLBACK_TITLES.length];
-  let logline = FALLBACK_LOGLINES[i % FALLBACK_LOGLINES.length];
+  let title = `Episode ${episodeNumber}`;
+  let logline = '';
   let script = '';
 
-  const messages: Message[] = [
-    {
-      role: 'system',
-      content: `You are a brilliant TV show writer. Write Episode ${i + 1} of ${step1Data.episodeCount} for this company's content season.
-
-Cast (use their job positions and day-to-day responsibilities in scenes and dialogue):
-${formatCastForPrompt(step1Data.cast)}
-
-The product should be used naturally, never explained like a tutorial.
-Episodes should feel like The Office meets Succession — real drama, real product use.
-
-Format your response EXACTLY as:
-TITLE: [Dramatic, funny title referencing the episode conflict]
-LOGLINE: [One punchy sentence]
-SCENE 1: [Scene heading]
-[Description and dialogue in proper screenplay format]
-Continue for 3-5 scenes.`,
-    },
-    {
-      role: 'user',
-      content: `Company context from briefing:\n${companyContext}\n\nGenerate episode ${i + 1} now.`,
-    },
-  ];
-
   try {
-    script = await chatClient(messages);
-    const titleMatch = script.match(/^TITLE:\s*(.+)$/m);
-    const loglineMatch = script.match(/^LOGLINE:\s*(.+)$/m);
-    if (titleMatch) title = titleMatch[1].replace(/['"]/g, '');
-    if (loglineMatch) logline = loglineMatch[1];
+    script = await chatClient(
+      buildEpisodeScriptMessages(
+        step1Data,
+        briefingContext,
+        seasonContext,
+        episodeNumber,
+        previousScripts
+      )
+    );
+    const parsed = parseTitleAndLogline(script);
+    if (parsed.title) title = parsed.title;
+    if (parsed.logline) logline = parsed.logline;
   } catch {
-    script = generateFallbackScript(i, step1Data.cast, title);
+    script = buildFallbackScript(
+      episodeNumber,
+      step1Data.episodeCount,
+      seasonContext,
+      step1Data.cast,
+      previousScripts
+    );
+    const parsed = parseTitleAndLogline(script);
+    title = parsed.title || title;
+    logline = parsed.logline || seasonContext.episodeBlueprints[episodeNumber - 1].scenario;
   }
 
   return {
-    id: i + 1,
+    id: episodeNumber,
     title,
     logline,
     script,
-    thumbClass: THUMB_CLASSES[i % THUMB_CLASSES.length],
+    thumbClass: THUMB_CLASSES[(episodeNumber - 1) % THUMB_CLASSES.length],
   };
 }
 
@@ -182,22 +110,41 @@ export default function Step3({
   step1Data,
   companyContext,
   episodes,
+  seasonPlan: savedSeasonContext,
+  generatedForEpisodeCount,
+  generationBatchId,
+  generatedForBatchId,
   onEpisodesChange,
   onViewEpisode,
   onBack,
 }: Step3Props) {
-  const [generating, setGenerating] = useState(
-    episodes.length < step1Data.episodeCount
-  );
+  const targetCount = step1Data.episodeCount;
+  const briefingComplete = generationBatchId !== null && companyContext.trim().length > 0;
+  const batchMismatch =
+    generationBatchId !== null &&
+    generatedForBatchId !== null &&
+    generatedForBatchId !== generationBatchId;
+  const countMismatch =
+    generatedForEpisodeCount !== null && generatedForEpisodeCount !== targetCount;
+  const needsGeneration =
+    briefingComplete &&
+    (batchMismatch || countMismatch || episodes.length < targetCount);
+
+  const [generating, setGenerating] = useState(needsGeneration);
+  const [phase, setPhase] = useState<GenerationPhase>('idle');
   const [generatingIndex, setGeneratingIndex] = useState(
     episodes.length > 0 ? episodes.length : 0
   );
+
   const episodesRef = useRef(episodes);
+  const seasonContextRef = useRef(savedSeasonContext);
   episodesRef.current = episodes;
+  seasonContextRef.current = savedSeasonContext;
 
   useEffect(() => {
-    if (episodesRef.current.length >= step1Data.episodeCount) {
+    if (!briefingComplete || !needsGeneration) {
       setGenerating(false);
+      setPhase('idle');
       return;
     }
 
@@ -205,24 +152,91 @@ export default function Step3({
 
     const run = async () => {
       setGenerating(true);
-      let current = [...episodesRef.current];
+      let current = batchMismatch || countMismatch ? [] : [...episodesRef.current];
+      let contextRaw = batchMismatch || countMismatch ? '' : seasonContextRef.current;
 
-      for (let i = current.length; i < step1Data.episodeCount; i++) {
+      // ── PHASE 1: Season arc (1 API call) ──
+      setPhase('phase1');
+      setGeneratingIndex(0);
+
+      const seasonContext = await runPhase1(step1Data, companyContext, contextRaw);
+      if (cancelled) return;
+
+      contextRaw = seasonContext.raw;
+      onEpisodesChange(current, contextRaw, targetCount, generationBatchId);
+
+      // ── PHASE 2: Sequential episodes (X API calls) ──
+      setPhase('phase2');
+
+      for (let i = current.length; i < targetCount; i++) {
         if (cancelled) return;
-        setGeneratingIndex(i + 1);
-        const ep = await generateSingleEpisode(i, step1Data, companyContext);
+
+        const episodeNumber = i + 1;
+        setGeneratingIndex(episodeNumber);
+
+        const previousScripts: PriorEpisodeScript[] = current.map((ep) => ({
+          episodeNumber: ep.id,
+          title: ep.title,
+          script: ep.script,
+        }));
+
+        const ep = await runPhase2Episode(
+          episodeNumber,
+          step1Data,
+          companyContext,
+          seasonContext,
+          previousScripts
+        );
         if (cancelled) return;
+
         current = [...current, ep];
-        onEpisodesChange(current);
-        await new Promise((r) => setTimeout(r, 200));
+        onEpisodesChange(current, contextRaw, targetCount, generationBatchId);
+        await new Promise((r) => setTimeout(r, 300));
       }
 
-      if (!cancelled) setGenerating(false);
+      if (!cancelled) {
+        setGenerating(false);
+        setPhase('idle');
+      }
     };
 
     run();
     return () => { cancelled = true; };
-  }, []); // resume from episodes already saved in parent
+  }, [targetCount, needsGeneration, briefingComplete, generationBatchId]);
+
+  if (!briefingComplete) {
+    return (
+      <motion.div
+        initial={{ opacity: 0, y: 30 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="max-w-2xl mx-auto text-center py-16"
+      >
+        <h2 className="text-3xl font-brand text-gray-900 mb-3">Finish the briefing first</h2>
+        <p className="text-gray-500 mb-8">
+          Complete Step 2 and click Generate. Phase 1 defines the season arc; Phase 2 writes each episode.
+        </p>
+        <button type="button" onClick={onBack} className="px-6 py-3 rounded-2xl bg-black text-white font-semibold hover:bg-amber-500 hover:text-black transition-all">
+          ← Back to Step 2
+        </button>
+      </motion.div>
+    );
+  }
+
+  const totalApiCalls = 1 + targetCount;
+  const completedCalls = phase === 'phase1' ? 0 : generatingIndex;
+  const progressPercent = phase === 'phase1' ? 2 : ((1 + generatingIndex) / totalApiCalls) * 100;
+
+  const statusText =
+    phase === 'phase1'
+      ? 'Phase 1 — Defining season arc (world, characters, ending)...'
+      : `Phase 2 — Episode ${generatingIndex}/${targetCount} (${SCRIPT_DURATION_SECONDS}s script)`;
+
+  const contextText =
+    generatingIndex === 0 && phase === 'phase2'
+      ? 'Season context + briefing'
+      : generatingIndex === 1
+      ? 'Season context + briefing (no prior scripts)'
+      : `Season context + briefing + episodes 1–${generatingIndex - 1}`;
 
   return (
     <motion.div
@@ -243,28 +257,30 @@ export default function Step3({
         <h2 className="text-4xl font-brand text-gray-900 mb-2">Your season drops</h2>
         <p className="text-gray-500">
           {generating
-            ? `Generating episode ${generatingIndex} of ${step1Data.episodeCount}...`
-            : `${episodes.length} episodes ready. Click any episode to read the script.`}
+            ? statusText
+            : `${episodes.length} episode${episodes.length === 1 ? '' : 's'} ready.`}
         </p>
       </div>
 
       {generating && (
         <div className="mb-8 p-4 rounded-2xl bg-amber-50 border border-amber-100">
-          <div className="flex items-center gap-3 mb-3">
+          <div className="flex items-center gap-3 mb-2">
             <motion.div
               animate={{ rotate: 360 }}
               transition={{ repeat: Infinity, duration: 1 }}
               className="w-5 h-5 border-2 border-amber-500/30 border-t-amber-500 rounded-full"
             />
-            <span className="text-amber-700 font-medium text-sm">
-              Writing episode {generatingIndex} of {step1Data.episodeCount}...
-              {episodes.length > 0 && ` (${episodes.length} saved)`}
-            </span>
+            <span className="text-amber-700 font-medium text-sm">{statusText}</span>
           </div>
+          {phase === 'phase2' && (
+            <p className="text-amber-600/80 text-xs mb-3 ml-8">
+              API call {1 + generatingIndex} of {totalApiCalls} — includes: {contextText}
+            </p>
+          )}
           <div className="w-full h-2 bg-amber-100 rounded-full overflow-hidden">
             <motion.div
               className="h-full bg-amber-500 rounded-full"
-              animate={{ width: `${(generatingIndex / step1Data.episodeCount) * 100}%` }}
+              animate={{ width: `${progressPercent}%` }}
               transition={{ duration: 0.4 }}
             />
           </div>
@@ -274,24 +290,18 @@ export default function Step3({
       {episodes.length > 0 && (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
           {episodes.map((ep, i) => (
-            <EpisodeCard
-              key={ep.id}
-              episode={ep}
-              index={i}
-              onClick={() => onViewEpisode(ep.id)}
-            />
+            <EpisodeCard key={ep.id} episode={ep} index={i} onClick={() => onViewEpisode(ep.id)} />
           ))}
         </div>
       )}
 
       {generating && episodes.length === 0 && (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
-          {Array.from({ length: step1Data.episodeCount }).map((_, i) => (
+          {Array.from({ length: targetCount }).map((_, i) => (
             <div key={i} className="rounded-2xl bg-gray-50 border border-gray-100 h-56 animate-pulse" />
           ))}
         </div>
       )}
-
     </motion.div>
   );
 }

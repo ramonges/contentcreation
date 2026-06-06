@@ -23,6 +23,11 @@ const EMPTY_WIZARD: WizardState = {
   companyContext: '',
   conversationMessages: [],
   episodes: [],
+  seasonOutline: '',
+  seasonPlan: '',
+  generatedForEpisodeCount: null,
+  generationBatchId: null,
+  generatedForBatchId: null,
   viewingEpisodeId: null,
 };
 
@@ -71,16 +76,25 @@ export default function DashboardPage() {
   };
 
   const handleStep1Complete = useCallback((data: Step1Data) => {
-    setWizard((prev) => ({
-      ...prev,
-      step1Data: data,
-      step: 2,
-      viewingEpisodeId: null,
-      conversationMessages:
-        prev.conversationMessages.length > 0
-          ? prev.conversationMessages
-          : [buildInitialDirectorMessage(data)],
-    }));
+    setWizard((prev) => {
+      const episodeCountChanged = prev.step1Data?.episodeCount !== data.episodeCount;
+      return {
+        ...prev,
+        step1Data: data,
+        step: 2,
+        viewingEpisodeId: null,
+        episodes: episodeCountChanged ? [] : prev.episodes,
+        seasonOutline: episodeCountChanged ? '' : prev.seasonOutline,
+        seasonPlan: episodeCountChanged ? '' : prev.seasonPlan,
+        generatedForEpisodeCount: episodeCountChanged ? null : prev.generatedForEpisodeCount,
+        generationBatchId: episodeCountChanged ? null : prev.generationBatchId,
+        generatedForBatchId: episodeCountChanged ? null : prev.generatedForBatchId,
+        conversationMessages:
+          prev.conversationMessages.length > 0
+            ? prev.conversationMessages
+            : [buildInitialDirectorMessage(data)],
+      };
+    });
   }, []);
 
   const handleMessagesChange = useCallback((messages: Message[]) => {
@@ -88,18 +102,52 @@ export default function DashboardPage() {
   }, []);
 
   const handleStep2Complete = useCallback((context: string, messages: Message[]) => {
+    const batchId = `batch-${Date.now()}`;
     setWizard((prev) => ({
       ...prev,
       companyContext: context,
       conversationMessages: messages,
       episodes: [],
+      seasonOutline: '',
+      seasonPlan: '',
+      generatedForEpisodeCount: null,
+      generatedForBatchId: null,
+      generationBatchId: batchId,
       viewingEpisodeId: null,
       step: 3,
     }));
   }, []);
 
-  const handleEpisodesChange = useCallback((episodes: Episode[]) => {
-    setWizard((prev) => ({ ...prev, episodes }));
+  const handleEpisodesChange = useCallback(
+    (
+      episodes: Episode[],
+      seasonPlan?: string,
+      generatedForEpisodeCount?: number,
+      generatedForBatchId?: string | null
+    ) => {
+      setWizard((prev) => ({
+        ...prev,
+        episodes,
+        ...(seasonPlan !== undefined ? { seasonPlan } : {}),
+        ...(generatedForEpisodeCount !== undefined ? { generatedForEpisodeCount } : {}),
+        ...(generatedForBatchId !== undefined ? { generatedForBatchId } : {}),
+      }));
+    },
+    []
+  );
+
+  const handleStep3Back = useCallback(() => {
+    setWizard((prev) => ({
+      ...prev,
+      step: 2,
+      viewingEpisodeId: null,
+      episodes: [],
+      seasonOutline: '',
+      seasonPlan: '',
+      generatedForEpisodeCount: null,
+      generationBatchId: null,
+      generatedForBatchId: null,
+    }));
   }, []);
 
   const handleViewEpisode = useCallback((id: number | null) => {
@@ -218,9 +266,14 @@ export default function DashboardPage() {
             step1Data={wizard.step1Data}
             companyContext={wizard.companyContext}
             episodes={wizard.episodes}
+            seasonOutline={wizard.seasonOutline}
+            seasonPlan={wizard.seasonPlan}
+            generatedForEpisodeCount={wizard.generatedForEpisodeCount}
+            generationBatchId={wizard.generationBatchId}
+            generatedForBatchId={wizard.generatedForBatchId}
             onEpisodesChange={handleEpisodesChange}
             onViewEpisode={handleViewEpisode}
-            onBack={() => setWizard((prev) => ({ ...prev, step: 2, viewingEpisodeId: null }))}
+            onBack={handleStep3Back}
           />
         )}
       </main>

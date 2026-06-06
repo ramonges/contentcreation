@@ -10,6 +10,15 @@ export type WizardState = {
   companyContext: string;
   conversationMessages: Message[];
   episodes: Episode[];
+  seasonOutline: string;
+  /** Master season plan with linked arc + per-episode scenarios — created at end of Step 2 */
+  seasonPlan: string;
+  /** Episode count used when the current season was generated — mismatch triggers regen */
+  generatedForEpisodeCount: number | null;
+  /** Set only when user clicks Generate at end of Step 2 — gates all episode generation */
+  generationBatchId: string | null;
+  /** Batch id the current episodes were generated from */
+  generatedForBatchId: string | null;
   viewingEpisodeId: number | null;
 };
 
@@ -24,6 +33,11 @@ export function loadWizardState(): WizardState | null {
       companyContext: parsed.companyContext ?? '',
       conversationMessages: parsed.conversationMessages ?? [],
       episodes: parsed.episodes ?? [],
+      seasonOutline: parsed.seasonOutline ?? '',
+      seasonPlan: parsed.seasonPlan ?? '',
+      generatedForEpisodeCount: parsed.generatedForEpisodeCount ?? null,
+      generationBatchId: parsed.generationBatchId ?? null,
+      generatedForBatchId: parsed.generatedForBatchId ?? null,
       viewingEpisodeId: parsed.viewingEpisodeId ?? null,
     };
   } catch {
