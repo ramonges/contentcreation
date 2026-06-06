@@ -1,0 +1,10 @@
+{
+  "name": "contentcreation-root",
+  "private": true,
+  "dependencies": {
+    "@vercel/node": "^5"
+  },
+  "devDependencies": {
+    "@types/node": "^22"
+  }
+}
