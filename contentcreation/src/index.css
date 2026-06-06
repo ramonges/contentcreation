@@ -1,0 +1,142 @@
+@import url('https://fonts.googleapis.com/css2?family=Fredoka+One&family=Fredoka:wght@300;400;500;600;700&family=Plus+Jakarta+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&display=swap');
+@import "tailwindcss";
+
+:root {
+  --background: #ffffff;
+  --foreground: #0A0A0F;
+  --gold: #F5A623;
+  --red: #E63946;
+  --dark: #0A0A0F;
+  --navy: #0D0D1A;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: 'Plus Jakarta Sans', sans-serif;
+  --font-brand: 'Fredoka One', cursive;
+  --font-display: 'Fredoka', sans-serif;
+  --color-gold: var(--gold);
+  --color-dark: var(--dark);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  overflow-x: hidden;
+}
+
+.font-brand {
+  font-family: 'Fredoka One', cursive;
+}
+
+.font-display {
+  font-family: 'Fredoka', sans-serif;
+}
+
+/* Noise texture overlay */
+.noise-bg::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.04'/%3E%3C/svg%3E");
+  pointer-events: none;
+  z-index: 0;
+  opacity: 0.4;
+}
+
+/* Film grain animation */
+@keyframes grain {
+  0%, 100% { transform: translate(0, 0); }
+  10% { transform: translate(-2%, -3%); }
+  20% { transform: translate(2%, 1%); }
+  30% { transform: translate(-1%, 2%); }
+  40% { transform: translate(3%, -1%); }
+  50% { transform: translate(-2%, 3%); }
+  60% { transform: translate(1%, -2%); }
+  70% { transform: translate(-3%, 1%); }
+  80% { transform: translate(2%, 2%); }
+  90% { transform: translate(-1%, -1%); }
+}
+
+.film-grain::after {
+  content: '';
+  position: absolute;
+  inset: -50%;
+  width: 200%;
+  height: 200%;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 512 512' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.08'/%3E%3C/svg%3E");
+  animation: grain 0.5s steps(1) infinite;
+  pointer-events: none;
+  z-index: 1;
+  opacity: 0.15;
+}
+
+/* Rugby ball pill shape */
+.rugby-pill {
+  border-radius: 50px;
+  background: #2A2A3A;
+  padding: 8px 20px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #f1f1f1;
+}
+::-webkit-scrollbar-thumb {
+  background: #888;
+  border-radius: 3px;
+}
+
+/* Custom animations */
+@keyframes float {
+  0%, 100% { transform: translateY(0px); }
+  50% { transform: translateY(-20px); }
+}
+
+@keyframes shimmer {
+  0% { background-position: -200% center; }
+  100% { background-position: 200% center; }
+}
+
+.animate-float {
+  animation: float 6s ease-in-out infinite;
+}
+
+.shimmer-text {
+  background: linear-gradient(90deg, #F5A623 0%, #FFF 40%, #F5A623 60%, #E63946 100%);
+  background-size: 200% auto;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: shimmer 4s linear infinite;
+}
+
+/* Episode card thumbnail gradients */
+.ep-thumb-1 { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); }
+.ep-thumb-2 { background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); }
+.ep-thumb-3 { background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%); }
+.ep-thumb-4 { background: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%); }
+.ep-thumb-5 { background: linear-gradient(135deg, #fa709a 0%, #fee140 100%); }
+.ep-thumb-6 { background: linear-gradient(135deg, #a18cd1 0%, #fbc2eb 100%); }
+.ep-thumb-7 { background: linear-gradient(135deg, #ffecd2 0%, #fcb69f 100%); }
+.ep-thumb-8 { background: linear-gradient(135deg, #ff9a9e 0%, #fad0c4 100%); }
+.ep-thumb-9 { background: linear-gradient(135deg, #a1c4fd 0%, #c2e9fb 100%); }
+.ep-thumb-10 { background: linear-gradient(135deg, #d4fc79 0%, #96e6a1 100%); }
+.ep-thumb-11 { background: linear-gradient(135deg, #f6d365 0%, #fda085 100%); }
+.ep-thumb-12 { background: linear-gradient(135deg, #89f7fe 0%, #66a6ff 100%); }
